@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cert-cli · GovWifi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <p class="brand-kicker">GovWifi</p>
+          <h1>cert-cli</h1>
+        </div>
+      </div>
+      <p class="lede">Generate and validate CA material locally. PEMs stay on screen until you save them to disk.</p>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Operations">
+      <button type="button" class="tab active" data-tab="all" role="tab" aria-selected="true">Generate all</button>
+      <button type="button" class="tab" data-tab="root" role="tab" aria-selected="false">Root</button>
+      <button type="button" class="tab" data-tab="inter" role="tab" aria-selected="false">Intermediate</button>
+      <button type="button" class="tab" data-tab="validate" role="tab" aria-selected="false">Validate</button>
+    </nav>
+
+    <main>
+      <section id="panel-all" class="panel active" role="tabpanel">
+        <div class="panel-intro">
+          <h2>Full CA hierarchy</h2>
+          <p>Create a root CA and an intermediate signed by that root in one step.</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" data-action="gen-all">Generate root + intermediate</button>
+        </div>
+        <p class="status" id="status-all" role="status"></p>
+        <div class="results" id="results-all" hidden>
+          <div class="result-group">
+            <h3>Root CA</h3>
+            <div class="bundle" data-bundle="all-root"></div>
+          </div>
+          <div class="result-group">
+            <h3>Intermediate CA</h3>
+            <div class="bundle" data-bundle="all-inter"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-root" class="panel" role="tabpanel" hidden>
+        <div class="panel-intro">
+          <h2>Root CA</h2>
+          <p>Self-signed root certificate and RSA 4096 key pair.</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" data-action="gen-root">Generate root CA</button>
+        </div>
+        <p class="status" id="status-root" role="status"></p>
+        <div class="results" id="results-root" hidden>
+          <div class="bundle" data-bundle="root"></div>
+        </div>
+      </section>
+
+      <section id="panel-inter" class="panel" role="tabpanel" hidden>
+        <div class="panel-intro">
+          <h2>Intermediate CA</h2>
+          <p>Sign a new intermediate with an existing root. Paste PEMs or upload files — nothing is written until you save the result.</p>
+        </div>
+        <div class="input-grid">
+          <div class="input-block">
+            <label for="inter-root-cert">Root certificate PEM</label>
+            <textarea id="inter-root-cert" rows="8" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+            <label class="file-btn">
+              <input type="file" data-fill="inter-root-cert" accept=".pem,.crt,.cer,text/plain">
+              <span>Upload certificate</span>
+            </label>
+          </div>
+          <div class="input-block">
+            <label for="inter-root-key">Root private key PEM</label>
+            <textarea id="inter-root-key" rows="8" spellcheck="false" placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea>
+            <label class="file-btn">
+              <input type="file" data-fill="inter-root-key" accept=".pem,.key,text/plain">
+              <span>Upload private key</span>
+            </label>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" data-action="gen-inter">Generate intermediate CA</button>
+        </div>
+        <p class="status" id="status-inter" role="status"></p>
+        <div class="results" id="results-inter" hidden>
+          <div class="bundle" data-bundle="inter"></div>
+        </div>
+      </section>
+
+      <section id="panel-validate" class="panel" role="tabpanel" hidden>
+        <div class="panel-intro">
+          <h2>Validate signature</h2>
+          <p>Check that a certificate was signed by a given root, and inspect OpenSSL-style details.</p>
+        </div>
+        <div class="input-grid">
+          <div class="input-block">
+            <label for="validate-cert">Certificate PEM</label>
+            <textarea id="validate-cert" rows="8" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+            <label class="file-btn">
+              <input type="file" data-fill="validate-cert" accept=".pem,.crt,.cer,text/plain">
+              <span>Upload certificate</span>
+            </label>
+          </div>
+          <div class="input-block">
+            <label for="validate-root">Root certificate PEM</label>
+            <textarea id="validate-root" rows="8" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+            <label class="file-btn">
+              <input type="file" data-fill="validate-root" accept=".pem,.crt,.cer,text/plain">
+              <span>Upload root certificate</span>
+            </label>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" data-action="validate">Validate signature</button>
+        </div>
+        <p class="status" id="status-validate" role="status"></p>
+        <div class="results results-validate" id="results-validate" hidden>
+          <div class="input-block">
+            <label for="validate-cert-text">Certificate details</label>
+            <textarea id="validate-cert-text" class="detail-text" rows="18" readonly spellcheck="false"></textarea>
+          </div>
+          <div class="input-block">
+            <label for="validate-root-text">Issuer (root) details</label>
+            <textarea id="validate-root-text" class="detail-text" rows="18" readonly spellcheck="false"></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Local only · http://127.0.0.1</span>
+      <span>RSA 4096 · SHA-256</span>
+    </footer>
+  </div>
+
+  <template id="pem-field-template">
+    <div class="pem-field">
+      <div class="pem-field-header">
+        <div class="pem-heading">
+          <span class="pem-badge"></span>
+          <strong class="pem-title"></strong>
+        </div>
+        <button type="button" class="ghost-btn copy-btn">Copy</button>
+      </div>
+      <textarea class="pem-content" rows="10" readonly spellcheck="false"></textarea>
+      <div class="save-row">
+        <label class="path-label">Save path
+          <input type="text" class="save-path" autocomplete="off" spellcheck="false">
+        </label>
+        <button type="button" class="ghost-btn save-btn">Save</button>
+        <span class="save-status"></span>
+      </div>
+    </div>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
