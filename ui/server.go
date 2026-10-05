@@ -10,6 +10,7 @@ import (
 	"certcli/ui/handlers"
 )
 
+// NewHandler returns the HTTP handler for the embedded UI and its API.
 func NewHandler() (http.Handler, error) {
 	staticRoot, err := fs.Sub(staticFS, "static")
 	if err != nil {
@@ -18,6 +19,7 @@ func NewHandler() (http.Handler, error) {
 	return handlers.New(staticRoot), nil
 }
 
+// ListenAndServe starts the UI on addr. addr must be a loopback host.
 func ListenAndServe(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

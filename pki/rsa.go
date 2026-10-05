@@ -13,6 +13,7 @@ import (
 
 const rsaKeyBits = 4096
 
+// LoadRSAPrivateKey reads a PEM-encoded RSA private key from path.
 func LoadRSAPrivateKey(path string) (*rsa.PrivateKey, error) {
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
@@ -22,6 +23,8 @@ func LoadRSAPrivateKey(path string) (*rsa.PrivateKey, error) {
 	return PemToRSAPrivateKey(keyBytes)
 }
 
+// PemToRSAPrivateKey parses the first PEM block in pemBytes as a PKCS#1 or
+// PKCS#8 RSA private key.
 func PemToRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -44,6 +47,9 @@ func PemToRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
+// GetRSAPrivateKey loads the RSA private key at filename, or generates and
+// saves a new one when the file is missing. It also writes the matching
+// public key beside it.
 func GetRSAPrivateKey(filename string) (*rsa.PrivateKey, error) {
 	privateKey, err := LoadRSAPrivateKey(filename)
 	if err != nil {
@@ -65,10 +71,13 @@ func GetRSAPrivateKey(filename string) (*rsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
+// GenerateRSAPrivateKey returns a new 4096-bit RSA private key.
 func GenerateRSAPrivateKey() (*rsa.PrivateKey, error) {
 	return rsa.GenerateKey(rand.Reader, rsaKeyBits)
 }
 
+// SaveRSAPrivateKey writes privateKey to filename as a PKCS#1 PEM block,
+// replacing any existing file.
 func SaveRSAPrivateKey(privateKey *rsa.PrivateKey, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
@@ -82,6 +91,7 @@ func SaveRSAPrivateKey(privateKey *rsa.PrivateKey, filename string) error {
 	})
 }
 
+// RSAPrivateKey2Pem encodes privateKey as a PKCS#1 PEM block.
 func RSAPrivateKey2Pem(privateKey *rsa.PrivateKey) []byte {
 	return pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
@@ -89,6 +99,7 @@ func RSAPrivateKey2Pem(privateKey *rsa.PrivateKey) []byte {
 	})
 }
 
+// RSAPublicKey2Pem encodes publicKey as a PKIX PEM block.
 func RSAPublicKey2Pem(publicKey *rsa.PublicKey) ([]byte, error) {
 	pubBytes, err := x509.MarshalPKIXPublicKey(publicKey)
 	if err != nil {
@@ -97,6 +108,8 @@ func RSAPublicKey2Pem(publicKey *rsa.PublicKey) ([]byte, error) {
 	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes}), nil
 }
 
+// SaveRSAPublicKey writes publicKey to filename as a PKIX PEM block,
+// replacing any existing file.
 func SaveRSAPublicKey(publicKey *rsa.PublicKey, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
@@ -113,6 +126,8 @@ func SaveRSAPublicKey(publicKey *rsa.PublicKey, filename string) error {
 	return err
 }
 
+// GetRSAPublicKey reads the PEM public key at filename. When the file is
+// missing it derives the key from privateKey, saves it, and returns that PEM.
 func GetRSAPublicKey(privateKey *rsa.PrivateKey, filename string) ([]byte, error) {
 	pubPEM, err := os.ReadFile(filename)
 	if err != nil {

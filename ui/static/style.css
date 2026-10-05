@@ -307,7 +307,9 @@ main {
 }
 
 .input-block label,
-.path-label {
+.path-label,
+.expiry-field label,
+.count-field label {
   display: block;
   font-size: 0.86rem;
   font-weight: 600;
@@ -315,8 +317,63 @@ main {
   margin-bottom: 0.4rem;
 }
 
+.expiry-field,
+.count-field {
+  display: grid;
+  justify-items: start;
+  gap: 0.15rem;
+  margin-bottom: 1rem;
+}
+
+.expiry-field {
+  max-width: 22rem;
+}
+
+.count-field {
+  max-width: 36rem;
+}
+
+.expiry-field label,
+.count-field label {
+  margin-bottom: 0.15rem;
+}
+
+.expiry-field[hidden],
+.count-field[hidden] {
+  display: none !important;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.check-row input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--teal);
+}
+
+.field-hint {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
 textarea,
-input[type="text"] {
+input[type="text"],
+input[type="date"],
+input[type="number"] {
   display: block;
   width: 100%;
   margin: 0;
@@ -333,10 +390,26 @@ input[type="text"] {
 }
 
 textarea:focus,
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="date"]:focus,
+input[type="number"]:focus {
   outline: none;
   border-color: var(--teal);
   box-shadow: 0 0 0 3px rgba(15, 107, 92, 0.15);
+}
+
+input[type="date"],
+input[type="number"] {
+  font-family: var(--font);
+  font-size: 0.95rem;
+  width: auto;
+  min-width: 12.5rem;
+  resize: none;
+  color-scheme: light;
+}
+
+input[type="number"] {
+  min-width: 8rem;
 }
 
 textarea::placeholder {

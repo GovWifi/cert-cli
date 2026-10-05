@@ -24,6 +24,7 @@
 
     <nav class="tabs" role="tablist" aria-label="Operations">
       <button type="button" class="tab active" data-tab="all" role="tab" aria-selected="true">Generate all</button>
+      <button type="button" class="tab" data-tab="chain" role="tab" aria-selected="false">Chain</button>
       <button type="button" class="tab" data-tab="root" role="tab" aria-selected="false">Root</button>
       <button type="button" class="tab" data-tab="inter" role="tab" aria-selected="false">Intermediate</button>
       <button type="button" class="tab" data-tab="validate" role="tab" aria-selected="false">Validate</button>
@@ -51,10 +52,46 @@
         </div>
       </section>
 
+      <section id="panel-chain" class="panel" role="tabpanel" hidden>
+        <div class="panel-intro">
+          <h2>Certificate chain</h2>
+          <p>Create a root CA, an intermediate signed by that root, and leaf certificates signed by the intermediate.</p>
+        </div>
+        <div class="count-field">
+          <label for="chain-leaves">Leaf certificates</label>
+          <input type="number" id="chain-leaves" name="leaves" min="1" max="100" step="1" value="1" inputmode="numeric">
+          <p class="field-hint">Each leaf is signed by the new intermediate. Enter a whole number from 1 to 100. Larger counts take longer because every certificate gets a new RSA 4096 key.</p>
+        </div>
+        <label class="check-row">
+          <input type="checkbox" id="chain-save">
+          <span>Save all certificates and keys to files</span>
+        </label>
+        <div class="count-field" id="chain-out-field" hidden>
+          <label for="chain-out">Output directory</label>
+          <input type="text" id="chain-out" value="chain" autocomplete="off" spellcheck="false">
+          <p class="field-hint">Relative to the directory where you started cert-cli ui. Writes the certificate, private key, and public key for the root, the intermediate, and every leaf.</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" data-action="gen-chain">Generate chain</button>
+        </div>
+        <p class="status" id="status-chain" role="status"></p>
+        <div class="results" id="results-chain" hidden></div>
+      </section>
+
       <section id="panel-root" class="panel" role="tabpanel" hidden>
         <div class="panel-intro">
           <h2>Root CA</h2>
           <p>Self-signed root certificate and RSA 4096 key pair.</p>
+        </div>
+        <div class="start-field">
+          <label for="root-start">Certificate start</label>
+          <input type="date" id="root-start" name="start">
+          <p class="field-hint">Defaults to today. A value bigger than expiry date generates invalid certificate.</p>
+        </div>
+        <div class="expiry-field">
+          <label for="root-expiry">Certificate expiry</label>
+          <input type="date" id="root-expiry" name="expiry">
+          <p class="field-hint">Defaults to 10 years from today. A past date generates an expired certificate.</p>
         </div>
         <div class="actions">
           <button type="button" class="primary" data-action="gen-root">Generate root CA</button>
@@ -87,6 +124,16 @@
               <span>Upload private key</span>
             </label>
           </div>
+        </div>
+        <div class="start-field">
+          <label for="inter-start">Certificate start</label>
+          <input type="date" id="inter-start" name="start">
+          <p class="field-hint">Defaults to today. A value bigger than expiry date generates invalid certificate.</p>
+        </div>
+        <div class="expiry-field">
+          <label for="inter-expiry">Certificate expiry</label>
+          <input type="date" id="inter-expiry" name="expiry">
+          <p class="field-hint">Defaults to 10 years from today. A past date generates an expired certificate.</p>
         </div>
         <div class="actions">
           <button type="button" class="primary" data-action="gen-inter">Generate intermediate CA</button>

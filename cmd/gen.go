@@ -20,4 +20,5 @@ func init() {
 	genCmd.AddCommand(genAllCmd)
 	genCmd.AddCommand(genRootCmd)
 	genCmd.AddCommand(genInterCmd)
+	genCmd.AddCommand(genChainCmd)
 }

@@ -14,6 +14,7 @@ var rootCmd = &cobra.Command{
 	SilenceErrors: true,
 }
 
+// Execute runs the cert-cli command and exits the process on error.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

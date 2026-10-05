@@ -14,6 +14,7 @@ func New(staticRoot fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/gen/root", handleGenRoot)
 	mux.HandleFunc("POST /api/gen/inter", handleGenInter)
 	mux.HandleFunc("POST /api/gen/all", handleGenAll)
+	mux.HandleFunc("POST /api/gen/chain", handleGenChain)
 	mux.HandleFunc("POST /api/validate", handleValidate)
 	mux.HandleFunc("POST /api/save", handleSave)
 	return mux

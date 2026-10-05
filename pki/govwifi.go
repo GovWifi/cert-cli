@@ -17,11 +17,14 @@ const (
 	govWifiOrganization = "GovWifi"
 	RootCN              = "GovWifi Root CA"
 	IntermediateCN      = "GovWifi Intermediate CA"
+	// MaxLeafCount is the most leaf certificates CreateChain will issue.
+	MaxLeafCount = 100
 )
 
 var (
-	RootValidFor         = 10 * 365 * 24 * time.Hour
-	IntermediateValidFor = 5 * 365 * 24 * time.Hour
+	RootExpiry         = time.Now().Add(10 * 365 * 24 * time.Hour)
+	IntermediateExpiry = time.Now().Add(5 * 365 * 24 * time.Hour)
+	LeafExpiry         = time.Now().Add(365 * 24 * time.Hour)
 )
 
 // CADetails is an in-memory CA key pair and certificate.
@@ -33,13 +36,15 @@ type CADetails struct {
 	CertPEM       []byte
 }
 
-func CreateRootCA() (*CADetails, error) {
+// CreateRootCA generates a new RSA key and a self-signed GovWifi root CA
+// certificate valid from notBefore until notAfter.
+func CreateRootCA(notBefore, notAfter time.Time) (*CADetails, error) {
 	privateKey, err := GenerateRSAPrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
-	certPEM, err := CreateSelfSignedCertificate(privateKey, RootCN, nil, RootValidFor)
+	certPEM, err := CreateSelfSignedCertificate(privateKey, RootCN, nil, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -47,13 +52,15 @@ func CreateRootCA() (*CADetails, error) {
 	return newCADetails(privateKey, certPEM)
 }
 
-func CreateIntermediateCA(rootCert *x509.Certificate, rootKey *rsa.PrivateKey) (*CADetails, error) {
+// CreateIntermediateCA generates a new RSA key and a GovWifi intermediate CA
+// certificate signed by rootCert with rootKey, valid from notBefore until notAfter.
+func CreateIntermediateCA(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, notBefore, notAfter time.Time) (*CADetails, error) {
 	privateKey, err := GenerateRSAPrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
-	certPEM, err := CreateIntermediateCertificate(rootCert, rootKey, privateKey, IntermediateCN, IntermediateValidFor)
+	certPEM, err := CreateIntermediateCertificate(rootCert, rootKey, privateKey, IntermediateCN, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +88,8 @@ func newCADetails(privateKey *rsa.PrivateKey, certPEM []byte) (*CADetails, error
 	}, nil
 }
 
+// SaveCADetails writes the CA private key, its matching public key, and the
+// certificate PEM. The public key path is keyPath with a .pub extension.
 func SaveCADetails(material *CADetails, keyPath, certPath string) error {
 	if err := SaveRSAPrivateKey(material.Key, keyPath); err != nil {
 		return err
@@ -91,6 +100,7 @@ func SaveCADetails(material *CADetails, keyPath, certPath string) error {
 	return SaveCertificate(material.CertPEM, certPath)
 }
 
+// LoadCertificate reads a PEM certificate from path.
 func LoadCertificate(path string) (*x509.Certificate, error) {
 	certBytes, err := os.ReadFile(path)
 	if err != nil {
@@ -100,6 +110,7 @@ func LoadCertificate(path string) (*x509.Certificate, error) {
 	return PemToCertificate(certBytes)
 }
 
+// PemToCertificate parses the first PEM block in pemBytes as an X.509 certificate.
 func PemToCertificate(pemBytes []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -113,50 +124,10 @@ func PemToCertificate(pemBytes []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func GetSelfSignedCertificate(keyFilename, certFilename, commonName string, dnsNames []string, validFor time.Duration) (*rsa.PrivateKey, []byte, error) {
-	privateKey, err := GetRSAPrivateKey(keyFilename)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certPEM, err := os.ReadFile(certFilename)
-	if err != nil {
-		certPEM, err = CreateSelfSignedCertificate(privateKey, commonName, dnsNames, validFor)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if err = SaveCertificate(certPEM, certFilename); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	return privateKey, certPEM, nil
-}
-
-func GetIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, keyFilename, certFilename, commonName string, validFor time.Duration) (*rsa.PrivateKey, []byte, error) {
-	privateKey, err := GetRSAPrivateKey(keyFilename)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	certPEM, err := os.ReadFile(certFilename)
-	if err != nil {
-		certPEM, err = CreateIntermediateCertificate(rootCert, rootKey, privateKey, commonName, validFor)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if err = SaveCertificate(certPEM, certFilename); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	return privateKey, certPEM, nil
-}
-
-func CreateSelfSignedCertificate(privateKey *rsa.PrivateKey, commonName string, dnsNames []string, validFor time.Duration) ([]byte, error) {
-	template, err := newCATemplate(commonName, validFor, 1)
+// CreateSelfSignedCertificate returns a PEM-encoded self-signed CA certificate
+// for commonName, valid from notBefore until notAfter. dnsNames may be nil.
+func CreateSelfSignedCertificate(privateKey *rsa.PrivateKey, commonName string, dnsNames []string, notBefore, notAfter time.Time) ([]byte, error) {
+	template, err := newCATemplate(commonName, notBefore, notAfter, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +141,10 @@ func CreateSelfSignedCertificate(privateKey *rsa.PrivateKey, commonName string, 
 	return encodeCertificatePEM(certDER), nil
 }
 
-func CreateIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, intermediateKey *rsa.PrivateKey, commonName string, validFor time.Duration) ([]byte, error) {
-	template, err := newCATemplate(commonName, validFor, 0)
+// CreateIntermediateCertificate returns a PEM-encoded intermediate CA certificate
+// for commonName, signed by rootCert with rootKey and valid from notBefore until notAfter.
+func CreateIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, intermediateKey *rsa.PrivateKey, commonName string, notBefore, notAfter time.Time) ([]byte, error) {
+	template, err := newCATemplate(commonName, notBefore, notAfter, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -184,13 +157,36 @@ func CreateIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.Priv
 	return encodeCertificatePEM(certDER), nil
 }
 
-func newCATemplate(commonName string, validFor time.Duration, maxPathLen int) (*x509.Certificate, error) {
+func newCATemplate(commonName string, notBefore, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
+	return newCATemplateWindow(commonName, notBefore, notAfter, maxPathLen)
+}
+
+func newCATemplateUntil(commonName string, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
+	if notAfter.IsZero() {
+		return nil, errors.New("expiry date is required")
+	}
+	notBefore, notAfter := validityWindow(notAfter)
+	return newCATemplateWindow(commonName, notBefore, notAfter, maxPathLen)
+}
+
+// validityWindow keeps NotBefore before NotAfter. A future expiry starts now.
+// An expiry that has already passed is a 10-year window ending at notAfter,
+// so the certificate is well-formed and already expired.
+func validityWindow(notAfter time.Time) (time.Time, time.Time) {
+	notAfter = notAfter.UTC()
+	now := time.Now().UTC()
+	if notAfter.After(now) {
+		return now, notAfter
+	}
+	return notAfter.AddDate(-10, 0, 0), notAfter
+}
+
+func newCATemplateWindow(commonName string, notBefore, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
 	serialNumber, err := newSerialNumber()
 	if err != nil {
 		return nil, err
 	}
 
-	now := time.Now().UTC()
 	return &x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
@@ -198,8 +194,8 @@ func newCATemplate(commonName string, validFor time.Duration, maxPathLen int) (*
 			Organization: []string{govWifiOrganization},
 			CommonName:   commonName,
 		},
-		NotBefore:             now,
-		NotAfter:              now.Add(validFor),
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -218,6 +214,7 @@ func encodeCertificatePEM(certDER []byte) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 }
 
+// SaveCertificate writes certPEM to filename, replacing any existing file.
 func SaveCertificate(certPEM []byte, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
@@ -227,8 +224,4 @@ func SaveCertificate(certPEM []byte, filename string) error {
 
 	_, err = file.Write(certPEM)
 	return err
-}
-
-func Certificate2Pem(cert *x509.Certificate) []byte {
-	return encodeCertificatePEM(cert.Raw)
 }

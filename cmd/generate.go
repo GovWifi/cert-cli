@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"certcli/pki"
 )
@@ -15,8 +16,8 @@ func publicKeyPath(privateKeyPath string) string {
 	return strings.TrimSuffix(privateKeyPath, ext) + ".pub"
 }
 
-func generateRoot(keyPath, certPath string) (*pki.CADetails, error) {
-	material, err := pki.CreateRootCA()
+func generateRoot(keyPath, certPath string, notBefore, notAfter time.Time) (*pki.CADetails, error) {
+	material, err := pki.CreateRootCA(notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -26,8 +27,8 @@ func generateRoot(keyPath, certPath string) (*pki.CADetails, error) {
 	return material, nil
 }
 
-func generateIntermediate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, keyPath, certPath string) error {
-	material, err := pki.CreateIntermediateCA(rootCert, rootKey)
+func generateIntermediate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, keyPath, certPath string, notBefore, notAfter time.Time) error {
+	material, err := pki.CreateIntermediateCA(rootCert, rootKey, notBefore, notAfter)
 	if err != nil {
 		return err
 	}

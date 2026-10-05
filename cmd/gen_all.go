@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"certcli/pki"
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -27,12 +29,12 @@ var genAllCmd = &cobra.Command{
 			return err
 		}
 
-		root, err := generateRoot(rootKeyPath, rootCertPath)
+		root, err := generateRoot(rootKeyPath, rootCertPath, time.Now(), pki.RootExpiry)
 		if err != nil {
 			return err
 		}
 
-		if err := generateIntermediate(root.Cert, root.Key, interKeyPath, interCertPath); err != nil {
+		if err := generateIntermediate(root.Cert, root.Key, interKeyPath, interCertPath, time.Now(), pki.IntermediateExpiry); err != nil {
 			return err
 		}
 

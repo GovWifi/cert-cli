@@ -3,10 +3,12 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"certcli/pki"
 )
@@ -15,6 +17,7 @@ type pemBundle struct {
 	Cert       string `json:"cert"`
 	PrivateKey string `json:"privateKey"`
 	PublicKey  string `json:"publicKey"`
+	CommonName string `json:"commonName,omitempty"`
 }
 
 type genAllResponse struct {
@@ -22,9 +25,26 @@ type genAllResponse struct {
 	Intermediate pemBundle `json:"intermediate"`
 }
 
+type genChainRequest struct {
+	Leaves int `json:"leaves"`
+}
+
+type genChainResponse struct {
+	Root         pemBundle   `json:"root"`
+	Intermediate pemBundle   `json:"intermediate"`
+	Leaves       []pemBundle `json:"leaves"`
+}
+
+type genExpiryRequest struct {
+	Start  string `json:"start"`
+	Expiry string `json:"expiry"`
+}
+
 type genInterRequest struct {
 	RootCert string `json:"rootCert"`
 	RootKey  string `json:"rootKey"`
+	Start    string `json:"start"`
+	Expiry   string `json:"expiry"`
 }
 
 type validateRequest struct {
@@ -50,7 +70,25 @@ type statusResponse struct {
 }
 
 func handleGenRoot(w http.ResponseWriter, r *http.Request) {
-	material, err := pki.CreateRootCA()
+	var req genExpiryRequest
+	if err := decodeOptionalJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	notBefore, err := pki.ParseDate(req.Start, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	notAfter, err := pki.ResolveExpiryDate(req.Expiry, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	material, err := pki.CreateRootCA(notBefore, notAfter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -59,13 +97,13 @@ func handleGenRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGenAll(w http.ResponseWriter, r *http.Request) {
-	root, err := pki.CreateRootCA()
+	root, err := pki.CreateRootCA(time.Now(), pki.RootExpiry)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	inter, err := pki.CreateIntermediateCA(root.Cert, root.Key)
+	inter, err := pki.CreateIntermediateCA(root.Cert, root.Key, time.Now(), pki.IntermediateExpiry)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -74,6 +112,39 @@ func handleGenAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, genAllResponse{
 		Root:         bundleFrom(root),
 		Intermediate: bundleFrom(inter),
+	})
+}
+
+func handleGenChain(w http.ResponseWriter, r *http.Request) {
+	var req genChainRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Leaves < 1 {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("leaves must be at least 1"))
+		return
+	}
+	if req.Leaves > pki.MaxLeafCount {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("leaves must be at most %d", pki.MaxLeafCount))
+		return
+	}
+
+	chain, err := pki.CreateChain(req.Leaves, time.Now())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	leaves := make([]pemBundle, 0, len(chain.Leaves))
+	for _, leaf := range chain.Leaves {
+		leaves = append(leaves, bundleFromNamed(leaf))
+	}
+
+	writeJSON(w, http.StatusOK, genChainResponse{
+		Root:         bundleFrom(chain.Root),
+		Intermediate: bundleFrom(chain.Intermediate),
+		Leaves:       leaves,
 	})
 }
 
@@ -98,8 +169,18 @@ func handleGenInter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid root private key: %w", err))
 		return
 	}
+	notBefore, err := pki.ParseDate(req.Start, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	notAfter, err := pki.ResolveExpiryDate(req.Expiry, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
 
-	material, err := pki.CreateIntermediateCA(rootCert, rootKey)
+	material, err := pki.CreateIntermediateCA(rootCert, rootKey, notBefore, notAfter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -186,12 +267,29 @@ func handleSave(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func decodeOptionalJSON(r *http.Request, dest any) error {
+	if r.Body == nil {
+		return nil
+	}
+	err := json.NewDecoder(r.Body).Decode(dest)
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
 func bundleFrom(material *pki.CADetails) pemBundle {
 	return pemBundle{
 		Cert:       string(material.CertPEM),
 		PrivateKey: string(material.PrivateKeyPEM),
 		PublicKey:  string(material.PublicKeyPEM),
 	}
+}
+
+func bundleFromNamed(material *pki.CADetails) pemBundle {
+	bundle := bundleFrom(material)
+	bundle.CommonName = material.Cert.Subject.CommonName
+	return bundle
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
