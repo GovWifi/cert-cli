@@ -20,7 +20,7 @@ func TestExecute(t *testing.T) {
 		if err != nil {
 			t.Fatalf("help: %v\n%s", err, out)
 		}
-		if !strings.Contains(out, "Generate and validate GovWifi CA certificates") {
+		if !strings.Contains(out, "Generate, validate, and view GovWifi CA certificates") {
 			t.Fatalf("help output:\n%s", out)
 		}
 	})

@@ -1,18 +1,18 @@
 # cert-cli user manual
 
-`cert-cli` generates and checks GovWifi certificate authority (CA) material.
+`cert-cli` generates, validates, and views GovWifi certificate authority (CA) material.
 
-Use it to create a root CA, create an intermediate CA signed by that root, create a chain of leaf certificates signed by a new intermediate, or check that a certificate was signed by a given root. You can also use an embedded local web UI that shows generated PEMs on screen and only writes files when you choose to save them.
+Use it to create a root CA with an intermediate and leaf certificates, check that a certificate was signed by a given issuer, or decode a PEM certificate into OpenSSL-style details. You can also use an embedded local web UI that shows generated PEMs on screen and only writes files when you choose to save them.
 
-Generated keys are RSA 4096-bit. Certificates are PEM-encoded X.509 CA certificates with SHA-256 signatures.
+Generated keys are RSA 4096-bit. Certificates are PEM-encoded X.509 certificates with SHA-256 signatures.
 
-| Certificate | Subject common name | Valid for |
+| Certificate | Subject common name | Valid for (defaults) |
 | --- | --- | --- |
-| Root CA | GovWifi Root CA | 10 years (`gen all` and `gen chain`, and the default for `gen root`) |
-| Intermediate CA | GovWifi Intermediate CA | 5 years with `gen all` and `gen chain`; 10 years by default with `gen inter` |
-| Leaf | GovWifi Leaf N | 1 year (`gen chain`) |
+| Root CA | GovWifi Root CA | 10 years |
+| Intermediate CA | GovWifi Intermediate CA | 5 years |
+| Leaf | GovWifi Leaf N | 1 year |
 
-`gen root` and `gen inter` take `--expiry YYYY-MM-DD`. The certificate is valid through the end of that local day. The default is 10 years from today. A past date generates a certificate that is already expired. `gen all` and `gen chain` do not take `--expiry` and keep the durations above. Leaf certificates are end-entity certificates (not CAs) with client authentication extended key usage. Each leaf is signed by the intermediate, not by the root.
+`generate` accepts separate `--*-start` and `--*-expiry` dates (`YYYY-MM-DD`). Empty dates use the defaults above. A past expiry date generates a certificate that is already expired. Leaf certificates are end-entity certificates (not CAs) with client authentication extended key usage. Each leaf is signed by the intermediate, not by the root.
 
 ## Install
 
@@ -34,30 +34,35 @@ Show all commands:
 
 ```bash
 cert-cli --help
-cert-cli gen --help
+cert-cli generate --help
+cert-cli validate --help
+cert-cli view --help
 cert-cli ui --help
 ```
 
 ## What gets written
 
-`gen root`, `gen inter`, and `gen all` each write three files per certificate. `gen chain` writes files only when you pass `--save`. Each saved certificate has:
+`generate` writes files only when you pass `--save`. Each saved certificate has:
 
-1. A private key (`*-key.pem`)
-2. A public key (`*-key.pub`) — the public key path is the private key path with the extension replaced by `.pub`
+1. A private key (`*.key`)
+2. A public key (`*.pub`) — the public key path is the private key path with the extension replaced by `.pub`
 3. A certificate (`*.pem`)
 
-Default filenames:
+Default filenames (under `--out`, default `test`):
 
 | File | Default path |
 | --- | --- |
 | Root certificate | `rootcert.pem` |
-| Root private key | `root-key.pem` |
-| Root public key | `root-key.pub` |
+| Root private key | `root.key` |
+| Root public key | `root.pub` |
 | Intermediate certificate | `intermediate.pem` |
-| Intermediate private key | `intermediate-key.pem` |
-| Intermediate public key | `intermediate-key.pub` |
+| Intermediate private key | `intermediate.key` |
+| Intermediate public key | `intermediate.pub` |
+| Leaf N certificate | `leaf-N.pem` |
+| Leaf N private key | `leaf-N.key` |
+| Leaf N public key | `leaf-N.pub` |
 
-Generate commands overwrite files at those paths if they already exist. Treat private keys as secrets and keep them out of version control.
+Pass `--prefix` to prepend a string to every saved file name (for example `valid_` writes `valid_rootcert.pem`). Generate overwrites files at those paths if they already exist. Treat private keys as secrets and keep them out of version control.
 
 ## Local web UI
 
@@ -67,14 +72,14 @@ Start an embedded web UI on localhost:
 cert-cli ui
 ```
 
-This opens `http://127.0.0.1:8080` in your browser and keeps serving until you stop it with Ctrl+C.
+This opens `http://127.0.0.1:30800` in your browser and keeps serving until you stop it with Ctrl+C.
 
 ### Flags
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--addr` | `127.0.0.1` | Listen address (localhost only) |
-| `--port` | `8080` | Listen port |
+| `--port` | `30800` | Listen port |
 
 Example:
 
@@ -84,150 +89,75 @@ cert-cli ui --addr 127.0.0.1 --port 9090
 
 The UI is a single page with tabs for:
 
-- Generate all
-- Chain
-- Root
-- Intermediate
+- Generate
 - Validate
+- View
 
-Generation shows certificate, private key, and public key PEMs on screen and does **not** write files until you click **Save** for each one. Save paths default to the CLI filenames and are editable. Saving writes to disk relative to the directory where you started `cert-cli ui` and overwrites existing files silently. Each PEM block also has a **Copy** button.
-
-For **Chain**, choose how many leaf certificates to create. Tick **Save all certificates and keys to files** to write the root, intermediate, and every leaf — each with its certificate, private key, and public key — under the output directory (default `chain`). You can still copy or save each PEM on its own.
-
-For **Intermediate**, paste or upload the existing root certificate and root private key (uploads stay in the request; they are not written to disk).
+**Generate** creates a root CA, intermediate, and leaf certificates with custom organization, subject names, and start/expiry dates. PEMs stay on screen until you save them. Tick **Save all certificates and keys to files** to write the root, intermediate, and every leaf under the output directory (default `test`). You can still copy or save each PEM on its own. Save paths are editable and writes are relative to the directory where you started `cert-cli ui` (existing files are overwritten silently).
 
 For **Validate**, paste or upload both PEMs. The UI reports whether the signature checks out and shows OpenSSL-style certificate text for the certificate and issuer.
 
-## Generate a full CA hierarchy
+For **View**, paste or upload a single PEM certificate to decode it into OpenSSL-style details.
 
-Create a new root CA and an intermediate CA signed by it:
+## Generate a certificate chain
 
-```bash
-cert-cli gen all
-```
-
-Example output:
-
-```text
-wrote root-key.pem, root-key.pub, and rootcert.pem
-wrote intermediate-key.pem, intermediate-key.pub, and intermediate.pem
-generated root and intermediate CA
-```
-
-### Flags
-
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--root-cert` | `rootcert.pem` | Root certificate output path |
-| `--root-key` | `root-key.pem` | Root private key output path |
-| `--inter-cert` | `intermediate.pem` | Intermediate certificate output path |
-| `--inter-key` | `intermediate-key.pem` | Intermediate private key output path |
-
-Example with custom paths:
+Create a new root CA, an intermediate CA signed by that root, and leaf certificates signed by the intermediate:
 
 ```bash
-cert-cli gen all \
-  --root-cert ca/root.pem \
-  --root-key ca/root-key.pem \
-  --inter-cert ca/intermediate.pem \
-  --inter-key ca/intermediate-key.pem
+cert-cli generate --leaves 3 --save
 ```
 
-## Generate a chain with leaf certificates
-
-Create a new root CA, an intermediate CA signed by that root, and a chosen number of leaf certificates signed by the intermediate:
-
-```bash
-cert-cli gen chain --leaves 3 --save
-```
-
-Without `--save`, the command prints each certificate and key as PEM text and does not write files. With `--save`, it writes them under `--out` (default: the current directory).
+`gen` is an alias for `generate`. Without `--save`, the command prints each certificate and key as PEM text and does not write files. With `--save`, it writes them under `--out` (default: `test`).
 
 Example output with `--save`:
 
 ```text
-wrote root-key.pem, root-key.pub, and rootcert.pem
-wrote intermediate-key.pem, intermediate-key.pub, and intermediate.pem
-wrote leaf-1-key.pem, leaf-1-key.pub, and leaf-1.pem
-wrote leaf-2-key.pem, leaf-2-key.pub, and leaf-2.pem
-wrote leaf-3-key.pem, leaf-3-key.pub, and leaf-3.pem
+wrote test/root.key, test/root.pub, and test/rootcert.pem
+wrote test/intermediate.key, test/intermediate.pub, and test/intermediate.pem
+wrote test/leaf-1.key, test/leaf-1.pub, and test/leaf-1.pem
+wrote test/leaf-2.key, test/leaf-2.pub, and test/leaf-2.pem
+wrote test/leaf-3.key, test/leaf-3.pub, and test/leaf-3.pem
 generated root, intermediate, and 3 leaf certificates
 ```
 
-Leaf files are numbered from 1. The subject common name is `GovWifi Leaf N`.
+Leaf files are numbered from 1. The subject common name is `GovWifi Leaf N` unless you change the organization via `--organization`.
 
 ### Flags
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
-| `--leaves` | (required) | Number of leaf certificates to sign with the intermediate (1–100) |
+| `--leaves` | `1` | Number of leaf certificates to sign with the intermediate (1–100) |
+| `--organization` | `GovWifi` | Organization name for every certificate subject |
+| `--root-cn` | `GovWifi Root CA` | Root CA common name |
+| `--intermediate-cn` | `GovWifi Intermediate CA` | Intermediate CA common name |
+| `--root-start` | today | Root start date (`YYYY-MM-DD`) |
+| `--root-expiry` | 10 years from today | Root expiry date (`YYYY-MM-DD`) |
+| `--intermediate-start` | today | Intermediate start date (`YYYY-MM-DD`) |
+| `--intermediate-expiry` | 5 years from today | Intermediate expiry date (`YYYY-MM-DD`) |
+| `--leaf-start` | today | Leaf start date (`YYYY-MM-DD`) |
+| `--leaf-expiry` | 1 year from today | Leaf expiry date (`YYYY-MM-DD`) |
 | `--save` | off | Write every certificate, private key, and public key to files |
-| `--out` | `.` | Directory for `--save` |
+| `--out` | `test` | Directory for `--save` |
+| `--prefix` | (empty) | Optional prefix prepended to every saved file name |
 
-Example with a directory:
-
-```bash
-cert-cli gen chain --leaves 3 --save --out ./certs
-```
-
-That writes `certs/rootcert.pem`, `certs/intermediate.pem`, `certs/leaf-1.pem`, and the matching `*-key.pem` and `*-key.pub` files.
-
-## Generate a root CA only
+Example with custom names and a directory:
 
 ```bash
-cert-cli gen root
+cert-cli generate \
+  --leaves 3 \
+  --organization Acme \
+  --root-cn "Acme Root" \
+  --intermediate-cn "Acme Intermediate" \
+  --save \
+  --out ./certs \
+  --prefix valid_
 ```
 
-This creates a key pair and a self-signed root certificate. It does not create an intermediate CA.
-
-### Flags
-
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--cert` | `rootcert.pem` | Root certificate output path |
-| `--key` | `root-key.pem` | Root private key output path |
-| `--expiry` | 10 years from today | Expiry date (`YYYY-MM-DD`). A past date generates an expired certificate |
-
-Example:
-
-```bash
-cert-cli gen root --cert rootcert.pem --key root-key.pem --expiry 2036-10-01
-```
-
-## Generate an intermediate CA
-
-Sign a new intermediate certificate with an existing root CA:
-
-```bash
-cert-cli gen inter --root rootcert.pem
-```
-
-`--root` is required. The command also needs the matching root **private** key so it can sign the intermediate certificate. If that key is not `root-key.pem`, pass `--root-key`.
-
-### Flags
-
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `--root` | (required) | Path to the root CA certificate |
-| `--root-key` | `root-key.pem` | Path to the root CA private key |
-| `--cert` | `intermediate.pem` | Intermediate certificate output path |
-| `--key` | `intermediate-key.pem` | Intermediate private key output path |
-| `--expiry` | 10 years from today | Expiry date (`YYYY-MM-DD`). A past date generates an expired certificate |
-
-Example:
-
-```bash
-cert-cli gen inter \
-  --root rootcert.pem \
-  --root-key root-key.pem \
-  --cert intermediate.pem \
-  --key intermediate-key.pem \
-  --expiry 2036-10-01
-```
+That writes `certs/valid_rootcert.pem`, `certs/valid_intermediate.pem`, `certs/valid_leaf-1.pem`, and the matching `*.key` / `*.pub` files.
 
 ## Check a signature
 
-Confirm that a certificate was signed by a given root CA:
+Confirm that a certificate was signed by a given issuer:
 
 ```bash
 cert-cli validate intermediate.pem --root rootcert.pem
@@ -245,17 +175,26 @@ On failure the command exits with an error, for example:
 certificate is not signed by rootcert.pem: crypto/rsa: verification error
 ```
 
-`--root` is required. The first argument is the certificate to check (usually the intermediate).
+`--root` is required. The first argument is the certificate to check (usually the intermediate). For a leaf, pass the intermediate as that issuer.
 
 This checks the cryptographic signature only. It does not check expiry, hostname, or a full trust chain beyond “this cert was signed by that issuer”.
+
+## View a certificate
+
+Decode a PEM certificate into OpenSSL-style details:
+
+```bash
+cert-cli view rootcert.pem
+```
 
 ## Typical workflows
 
 ### New environment from scratch
 
 ```bash
-cert-cli gen all
-cert-cli validate intermediate.pem --root rootcert.pem
+cert-cli generate --leaves 1 --save
+cert-cli validate test/intermediate.pem --root test/rootcert.pem
+cert-cli view test/rootcert.pem
 ```
 
 Or with the UI:
@@ -264,37 +203,24 @@ Or with the UI:
 cert-cli ui
 ```
 
-Then use the **Generate all** tab, review the PEMs, and save the files you need.
+Then use the **Generate** tab, review the PEMs, and save the files you need.
 
 ### Root, intermediate, and leaf certificates
 
 ```bash
-cert-cli gen chain --leaves 5 --save --out ./certs
+cert-cli generate --leaves 5 --save --out ./certs
 cert-cli validate certs/intermediate.pem --root certs/rootcert.pem
 cert-cli validate certs/leaf-1.pem --root certs/intermediate.pem
 ```
 
-`validate` checks that the first certificate was signed by the certificate passed to `--root`. For a leaf, pass the intermediate as that issuer.
-
-Or with the UI, open the **Chain** tab, set the leaf count, and tick **Save all certificates and keys to files** before generating.
-
-### Extra intermediate from an existing root
-
-```bash
-cert-cli gen inter \
-  --root rootcert.pem \
-  --root-key root-key.pem \
-  --cert staging-intermediate.pem \
-  --key staging-intermediate-key.pem
-
-cert-cli validate staging-intermediate.pem --root rootcert.pem
-```
+Or with the UI, open the **Generate** tab, set the leaf count, and tick **Save all certificates and keys to files** before generating.
 
 ## Inspecting files
 
-Certificates and keys are PEM text. You can inspect a certificate with OpenSSL:
+Certificates and keys are PEM text. You can inspect a certificate with `cert-cli view`, or with OpenSSL:
 
 ```bash
+cert-cli view rootcert.pem
 openssl x509 -in rootcert.pem -noout -text
 openssl x509 -in intermediate.pem -noout -text
 ```

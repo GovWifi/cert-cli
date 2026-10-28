@@ -152,6 +152,82 @@ func TestAPIGenInter(t *testing.T) {
 	}
 }
 
+func TestAPIGenLeaf(t *testing.T) {
+	h := New(fstest.MapFS{})
+	rootKey := mustKey(t)
+	notBefore := mustDate(t, "2026-10-01")
+	notAfter := mustDate(t, "2028-10-01")
+	rootPEM, err := pki.CreateSelfSignedCertificate(rootKey, "root", nil, notBefore, notAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCert, err := pki.PemToCertificate(rootPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interKey := mustKey(t)
+	interPEM, err := pki.CreateIntermediateCertificate(rootCert, rootKey, interKey, "inter", notBefore, notAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interKeyPEM := pki.RSAPrivateKey2Pem(interKey)
+
+	rec := postJSON(t, h, "/api/gen/leaf", map[string]string{})
+	assertError(t, rec, http.StatusBadRequest, "intermediateCert and intermediateKey are required")
+
+	rec = postJSON(t, h, "/api/gen/leaf", map[string]string{
+		"intermediateCert": "nope",
+		"intermediateKey":  string(interKeyPEM),
+		"start":            "2026-10-01",
+	})
+	assertError(t, rec, http.StatusBadRequest, "invalid intermediate certificate")
+
+	rec = postJSON(t, h, "/api/gen/leaf", map[string]string{
+		"intermediateCert": string(interPEM),
+		"intermediateKey":  "nope",
+		"start":            "2026-10-01",
+	})
+	assertError(t, rec, http.StatusBadRequest, "invalid intermediate private key")
+
+	rec = postJSON(t, h, "/api/gen/leaf", map[string]string{
+		"intermediateCert": string(interPEM),
+		"intermediateKey":  string(interKeyPEM),
+		"start":            "bad",
+	})
+	assertError(t, rec, http.StatusBadRequest, "YYYY-MM-DD")
+
+	rec = postJSON(t, h, "/api/gen/leaf", map[string]string{
+		"intermediateCert": string(interPEM),
+		"intermediateKey":  string(interKeyPEM),
+		"start":            "2026-10-01",
+		"expiry":           "2027-10-01",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	bundle := decodeBundle(t, rec.Body.Bytes())
+	cert, err := pki.PemToCertificate([]byte(bundle.Cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interCert, err := pki.PemToCertificate(interPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cert.Subject.CommonName != pki.LeafCommonName(1) {
+		t.Fatalf("CN = %q", cert.Subject.CommonName)
+	}
+	if cert.IsCA {
+		t.Fatal("expected an end-entity leaf")
+	}
+	if err := pki.CheckSignedBy(cert, interCert); err != nil {
+		t.Fatal(err)
+	}
+	if err := pki.CheckSignedBy(cert, rootCert); err == nil {
+		t.Fatal("expected the leaf to be signed by the intermediate, not the root")
+	}
+}
+
 func TestAPIGenAll(t *testing.T) {
 	h := New(fstest.MapFS{})
 	rec := serve(h, http.MethodGet, "/api/gen/all", nil)
@@ -252,6 +328,69 @@ func TestAPIGenChain(t *testing.T) {
 	}
 }
 
+func TestAPIGenTest(t *testing.T) {
+	h := New(fstest.MapFS{})
+
+	rec := serve(h, http.MethodPost, "/api/gen/test", strings.NewReader("{"))
+	assertError(t, rec, http.StatusBadRequest, "")
+
+	rec = postJSON(t, h, "/api/gen/test", map[string]any{"leaves": 0})
+	assertError(t, rec, http.StatusBadRequest, "at least 1")
+
+	rec = postJSON(t, h, "/api/gen/test", map[string]any{
+		"leaves":             1,
+		"organization":       "Acme",
+		"rootCN":             "Acme Root",
+		"intermediateCN":     "Acme Intermediate",
+		"rootStart":          "2026-01-01",
+		"rootExpiry":         "2036-01-01",
+		"intermediateStart":  "2026-02-01",
+		"intermediateExpiry": "2031-02-01",
+		"leafStart":          "2026-03-01",
+		"leafExpiry":         "2027-03-01",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	var resp genChainResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	root, err := pki.PemToCertificate([]byte(resp.Root.Cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inter, err := pki.PemToCertificate([]byte(resp.Intermediate.Cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := pki.PemToCertificate([]byte(resp.Leaves[0].Cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root.Subject.CommonName != "Acme Root" || inter.Subject.CommonName != "Acme Intermediate" {
+		t.Fatalf("CNs = %q, %q", root.Subject.CommonName, inter.Subject.CommonName)
+	}
+	if len(root.Subject.Organization) != 1 || root.Subject.Organization[0] != "Acme" {
+		t.Fatalf("organization = %v", root.Subject.Organization)
+	}
+	if !root.NotBefore.Equal(mustDate(t, "2026-01-01")) || !root.NotAfter.Equal(mustDate(t, "2036-01-01")) {
+		t.Fatalf("root validity %s – %s", root.NotBefore, root.NotAfter)
+	}
+	if !inter.NotBefore.Equal(mustDate(t, "2026-02-01")) || !inter.NotAfter.Equal(mustDate(t, "2031-02-01")) {
+		t.Fatalf("intermediate validity %s – %s", inter.NotBefore, inter.NotAfter)
+	}
+	if !leaf.NotBefore.Equal(mustDate(t, "2026-03-01")) || !leaf.NotAfter.Equal(mustDate(t, "2027-03-01")) {
+		t.Fatalf("leaf validity %s – %s", leaf.NotBefore, leaf.NotAfter)
+	}
+	if err := pki.CheckSignedBy(inter, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := pki.CheckSignedBy(leaf, inter); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAPIValidate(t *testing.T) {
 	h := New(fstest.MapFS{})
 	rootKey := mustKey(t)
@@ -311,6 +450,38 @@ func TestAPIValidate(t *testing.T) {
 	}
 	if !okResp.OK || okResp.Message != "certificate is signed by the given root" {
 		t.Fatalf("response = %+v", okResp)
+	}
+}
+
+func TestAPIView(t *testing.T) {
+	h := New(fstest.MapFS{})
+	rootKey := mustKey(t)
+	notBefore := mustDate(t, "2026-10-01")
+	notAfter := mustDate(t, "2028-10-01")
+	rootPEM, err := pki.CreateSelfSignedCertificate(rootKey, "root", nil, notBefore, notAfter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := serve(h, http.MethodPost, "/api/view", strings.NewReader("{"))
+	assertError(t, rec, http.StatusBadRequest, "")
+
+	rec = postJSON(t, h, "/api/view", map[string]string{"cert": ""})
+	assertError(t, rec, http.StatusBadRequest, "cert is required")
+
+	rec = postJSON(t, h, "/api/view", map[string]string{"cert": "nope"})
+	assertError(t, rec, http.StatusBadRequest, "invalid certificate")
+
+	rec = postJSON(t, h, "/api/view", map[string]string{"cert": string(rootPEM)})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	var resp viewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resp.Certificate, "CN = root") {
+		t.Fatalf("certificate text missing subject: %+v", resp)
 	}
 }
 

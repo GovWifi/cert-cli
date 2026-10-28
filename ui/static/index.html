@@ -19,129 +19,83 @@
           <h1>cert-cli</h1>
         </div>
       </div>
-      <p class="lede">Generate and validate CA material locally. PEMs stay on screen until you save them to disk.</p>
+      <p class="lede">Generate, validate, and inspect CA material locally. PEMs stay on screen until you save them to disk.</p>
     </header>
 
     <nav class="tabs" role="tablist" aria-label="Operations">
-      <button type="button" class="tab active" data-tab="all" role="tab" aria-selected="true">Generate all</button>
-      <button type="button" class="tab" data-tab="chain" role="tab" aria-selected="false">Chain</button>
-      <button type="button" class="tab" data-tab="root" role="tab" aria-selected="false">Root</button>
-      <button type="button" class="tab" data-tab="inter" role="tab" aria-selected="false">Intermediate</button>
+      <button type="button" class="tab active" data-tab="generate" role="tab" aria-selected="true">Generate</button>
       <button type="button" class="tab" data-tab="validate" role="tab" aria-selected="false">Validate</button>
+      <button type="button" class="tab" data-tab="view" role="tab" aria-selected="false">View</button>
     </nav>
 
     <main>
-      <section id="panel-all" class="panel active" role="tabpanel">
+      <section id="panel-generate" class="panel active" role="tabpanel">
         <div class="panel-intro">
-          <h2>Full CA hierarchy</h2>
-          <p>Create a root CA and an intermediate signed by that root in one step.</p>
+          <h2>Generate certificate chain</h2>
+          <p>Create a root CA, an intermediate, and leaf certificates with custom subject names and validity windows.</p>
         </div>
-        <div class="actions">
-          <button type="button" class="primary" data-action="gen-all">Generate root + intermediate</button>
-        </div>
-        <p class="status" id="status-all" role="status"></p>
-        <div class="results" id="results-all" hidden>
-          <div class="result-group">
-            <h3>Root CA</h3>
-            <div class="bundle" data-bundle="all-root"></div>
+        <div class="field-grid">
+          <div class="count-field">
+            <label for="generate-organization">Organization</label>
+            <input type="text" id="generate-organization" value="GovWifi" autocomplete="organization" spellcheck="false">
           </div>
-          <div class="result-group">
-            <h3>Intermediate CA</h3>
-            <div class="bundle" data-bundle="all-inter"></div>
+          <div class="count-field">
+            <label for="generate-root-cn">Root CN</label>
+            <input type="text" id="generate-root-cn" value="GovWifi Root CA" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="count-field">
+            <label for="generate-intermediate-cn">Intermediate CN</label>
+            <input type="text" id="generate-intermediate-cn" value="GovWifi Intermediate CA" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="count-field">
+            <label for="generate-leaves">Leaf certificates</label>
+            <input type="number" id="generate-leaves" name="leaves" min="1" max="100" step="1" value="1" inputmode="numeric">
+            <p class="field-hint">Each leaf is signed by the new intermediate. Enter a whole number from 1 to 100.</p>
           </div>
         </div>
-      </section>
-
-      <section id="panel-chain" class="panel" role="tabpanel" hidden>
-        <div class="panel-intro">
-          <h2>Certificate chain</h2>
-          <p>Create a root CA, an intermediate signed by that root, and leaf certificates signed by the intermediate.</p>
-        </div>
-        <div class="count-field">
-          <label for="chain-leaves">Leaf certificates</label>
-          <input type="number" id="chain-leaves" name="leaves" min="1" max="100" step="1" value="1" inputmode="numeric">
-          <p class="field-hint">Each leaf is signed by the new intermediate. Enter a whole number from 1 to 100. Larger counts take longer because every certificate gets a new RSA 4096 key.</p>
+        <div class="field-grid date-grid">
+          <div class="expiry-field">
+            <label for="generate-root-start">Root start date</label>
+            <input type="date" id="generate-root-start" name="root-start">
+          </div>
+          <div class="expiry-field">
+            <label for="generate-root-expiry">Root expiry date</label>
+            <input type="date" id="generate-root-expiry" name="root-expiry">
+          </div>
+          <div class="expiry-field">
+            <label for="generate-intermediate-start">Intermediate start date</label>
+            <input type="date" id="generate-intermediate-start" name="intermediate-start">
+          </div>
+          <div class="expiry-field">
+            <label for="generate-intermediate-expiry">Intermediate expiry date</label>
+            <input type="date" id="generate-intermediate-expiry" name="intermediate-expiry">
+          </div>
+          <div class="expiry-field">
+            <label for="generate-leaf-start">Leaf start date</label>
+            <input type="date" id="generate-leaf-start" name="leaf-start">
+          </div>
+          <div class="expiry-field">
+            <label for="generate-leaf-expiry">Leaf expiry date</label>
+            <input type="date" id="generate-leaf-expiry" name="leaf-expiry">
+          </div>
         </div>
         <label class="check-row">
-          <input type="checkbox" id="chain-save">
+          <input type="checkbox" id="generate-save">
           <span>Save all certificates and keys to files</span>
         </label>
-        <div class="count-field" id="chain-out-field" hidden>
-          <label for="chain-out">Output directory</label>
-          <input type="text" id="chain-out" value="chain" autocomplete="off" spellcheck="false">
+        <div class="count-field" id="generate-out-field" hidden>
+          <label for="generate-out">Output directory</label>
+          <input type="text" id="generate-out" value="test" autocomplete="off" spellcheck="false">
           <p class="field-hint">Relative to the directory where you started cert-cli ui. Writes the certificate, private key, and public key for the root, the intermediate, and every leaf.</p>
+          <label for="generate-prefix">Prefix</label>
+          <input type="text" id="generate-prefix" value="" autocomplete="off" spellcheck="false" placeholder="e.g. valid_">
+          <p class="field-hint">Prepended to every saved file name. Example: valid_ writes valid_rootcert.pem.</p>
         </div>
         <div class="actions">
-          <button type="button" class="primary" data-action="gen-chain">Generate chain</button>
+          <button type="button" class="primary" data-action="gen-generate">Generate chain</button>
         </div>
-        <p class="status" id="status-chain" role="status"></p>
-        <div class="results" id="results-chain" hidden></div>
-      </section>
-
-      <section id="panel-root" class="panel" role="tabpanel" hidden>
-        <div class="panel-intro">
-          <h2>Root CA</h2>
-          <p>Self-signed root certificate and RSA 4096 key pair.</p>
-        </div>
-        <div class="start-field">
-          <label for="root-start">Certificate start</label>
-          <input type="date" id="root-start" name="start">
-          <p class="field-hint">Defaults to today. A value bigger than expiry date generates invalid certificate.</p>
-        </div>
-        <div class="expiry-field">
-          <label for="root-expiry">Certificate expiry</label>
-          <input type="date" id="root-expiry" name="expiry">
-          <p class="field-hint">Defaults to 10 years from today. A past date generates an expired certificate.</p>
-        </div>
-        <div class="actions">
-          <button type="button" class="primary" data-action="gen-root">Generate root CA</button>
-        </div>
-        <p class="status" id="status-root" role="status"></p>
-        <div class="results" id="results-root" hidden>
-          <div class="bundle" data-bundle="root"></div>
-        </div>
-      </section>
-
-      <section id="panel-inter" class="panel" role="tabpanel" hidden>
-        <div class="panel-intro">
-          <h2>Intermediate CA</h2>
-          <p>Sign a new intermediate with an existing root. Paste PEMs or upload files — nothing is written until you save the result.</p>
-        </div>
-        <div class="input-grid">
-          <div class="input-block">
-            <label for="inter-root-cert">Root certificate PEM</label>
-            <textarea id="inter-root-cert" rows="8" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
-            <label class="file-btn">
-              <input type="file" data-fill="inter-root-cert" accept=".pem,.crt,.cer,text/plain">
-              <span>Upload certificate</span>
-            </label>
-          </div>
-          <div class="input-block">
-            <label for="inter-root-key">Root private key PEM</label>
-            <textarea id="inter-root-key" rows="8" spellcheck="false" placeholder="-----BEGIN RSA PRIVATE KEY-----"></textarea>
-            <label class="file-btn">
-              <input type="file" data-fill="inter-root-key" accept=".pem,.key,text/plain">
-              <span>Upload private key</span>
-            </label>
-          </div>
-        </div>
-        <div class="start-field">
-          <label for="inter-start">Certificate start</label>
-          <input type="date" id="inter-start" name="start">
-          <p class="field-hint">Defaults to today. A value bigger than expiry date generates invalid certificate.</p>
-        </div>
-        <div class="expiry-field">
-          <label for="inter-expiry">Certificate expiry</label>
-          <input type="date" id="inter-expiry" name="expiry">
-          <p class="field-hint">Defaults to 10 years from today. A past date generates an expired certificate.</p>
-        </div>
-        <div class="actions">
-          <button type="button" class="primary" data-action="gen-inter">Generate intermediate CA</button>
-        </div>
-        <p class="status" id="status-inter" role="status"></p>
-        <div class="results" id="results-inter" hidden>
-          <div class="bundle" data-bundle="inter"></div>
-        </div>
+        <p class="status" id="status-generate" role="status"></p>
+        <div class="results" id="results-generate" hidden></div>
       </section>
 
       <section id="panel-validate" class="panel" role="tabpanel" hidden>
@@ -179,6 +133,31 @@
           <div class="input-block">
             <label for="validate-root-text">Issuer (root) details</label>
             <textarea id="validate-root-text" class="detail-text" rows="18" readonly spellcheck="false"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="panel-view" class="panel" role="tabpanel" hidden>
+        <div class="panel-intro">
+          <h2>View certificate</h2>
+          <p>Paste or upload a PEM certificate to decode it into OpenSSL-style details.</p>
+        </div>
+        <div class="input-block">
+          <label for="view-cert">Certificate PEM</label>
+          <textarea id="view-cert" rows="10" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+          <label class="file-btn">
+            <input type="file" data-fill="view-cert" accept=".pem,.crt,.cer,text/plain">
+            <span>Upload certificate</span>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" data-action="view">Decode certificate</button>
+        </div>
+        <p class="status" id="status-view" role="status"></p>
+        <div class="results" id="results-view" hidden>
+          <div class="input-block">
+            <label for="view-cert-text">Certificate details</label>
+            <textarea id="view-cert-text" class="detail-text" rows="22" readonly spellcheck="false"></textarea>
           </div>
         </div>
       </section>

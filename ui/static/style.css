@@ -318,14 +318,16 @@ main {
 }
 
 .expiry-field,
-.count-field {
+.count-field,
+.start-field {
   display: grid;
   justify-items: start;
   gap: 0.15rem;
   margin-bottom: 1rem;
 }
 
-.expiry-field {
+.expiry-field,
+.start-field {
   max-width: 22rem;
 }
 
@@ -333,13 +335,32 @@ main {
   max-width: 36rem;
 }
 
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.field-grid .count-field,
+.field-grid .expiry-field,
+.field-grid .start-field {
+  max-width: none;
+}
+
+.date-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .expiry-field label,
-.count-field label {
+.count-field label,
+.start-field label {
   margin-bottom: 0.15rem;
 }
 
 .expiry-field[hidden],
-.count-field[hidden] {
+.count-field[hidden],
+.start-field[hidden] {
   display: none !important;
 }
 
@@ -582,6 +603,7 @@ textarea::placeholder {
   }
 
   .input-grid,
+  .field-grid,
   .results-validate {
     grid-template-columns: 1fr;
   }

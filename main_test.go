@@ -18,9 +18,9 @@ func TestMainHelp(t *testing.T) {
 	cmd.Env = append(os.Environ(), "CERTCLI_TEST_MAIN=1")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("main: %v\n%s", err, out)
+		t.Fatalf("certcli: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "Generate and validate GovWifi CA certificates") {
+	if !strings.Contains(string(out), "Generate, validate, and view GovWifi CA certificates") {
 		t.Fatalf("help output:\n%s", out)
 	}
 }

@@ -39,12 +39,18 @@ type CADetails struct {
 // CreateRootCA generates a new RSA key and a self-signed GovWifi root CA
 // certificate valid from notBefore until notAfter.
 func CreateRootCA(notBefore, notAfter time.Time) (*CADetails, error) {
+	return CreateRootCAWithSubject(govWifiOrganization, RootCN, notBefore, notAfter)
+}
+
+// CreateRootCAWithSubject generates a new RSA key and a self-signed root CA
+// certificate with the given organization and common name.
+func CreateRootCAWithSubject(organization, commonName string, notBefore, notAfter time.Time) (*CADetails, error) {
 	privateKey, err := GenerateRSAPrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
-	certPEM, err := CreateSelfSignedCertificate(privateKey, RootCN, nil, notBefore, notAfter)
+	certPEM, err := createSelfSignedCertificate(privateKey, organization, commonName, nil, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -55,12 +61,18 @@ func CreateRootCA(notBefore, notAfter time.Time) (*CADetails, error) {
 // CreateIntermediateCA generates a new RSA key and a GovWifi intermediate CA
 // certificate signed by rootCert with rootKey, valid from notBefore until notAfter.
 func CreateIntermediateCA(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, notBefore, notAfter time.Time) (*CADetails, error) {
+	return CreateIntermediateCAWithSubject(rootCert, rootKey, govWifiOrganization, IntermediateCN, notBefore, notAfter)
+}
+
+// CreateIntermediateCAWithSubject generates a new RSA key and an intermediate CA
+// certificate with the given organization and common name, signed by rootCert.
+func CreateIntermediateCAWithSubject(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, organization, commonName string, notBefore, notAfter time.Time) (*CADetails, error) {
 	privateKey, err := GenerateRSAPrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
-	certPEM, err := CreateIntermediateCertificate(rootCert, rootKey, privateKey, IntermediateCN, notBefore, notAfter)
+	certPEM, err := createIntermediateCertificate(rootCert, rootKey, privateKey, organization, commonName, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +139,11 @@ func PemToCertificate(pemBytes []byte) (*x509.Certificate, error) {
 // CreateSelfSignedCertificate returns a PEM-encoded self-signed CA certificate
 // for commonName, valid from notBefore until notAfter. dnsNames may be nil.
 func CreateSelfSignedCertificate(privateKey *rsa.PrivateKey, commonName string, dnsNames []string, notBefore, notAfter time.Time) ([]byte, error) {
-	template, err := newCATemplate(commonName, notBefore, notAfter, 1)
+	return createSelfSignedCertificate(privateKey, govWifiOrganization, commonName, dnsNames, notBefore, notAfter)
+}
+
+func createSelfSignedCertificate(privateKey *rsa.PrivateKey, organization, commonName string, dnsNames []string, notBefore, notAfter time.Time) ([]byte, error) {
+	template, err := newCATemplate(organization, commonName, notBefore, notAfter, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +160,11 @@ func CreateSelfSignedCertificate(privateKey *rsa.PrivateKey, commonName string, 
 // CreateIntermediateCertificate returns a PEM-encoded intermediate CA certificate
 // for commonName, signed by rootCert with rootKey and valid from notBefore until notAfter.
 func CreateIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, intermediateKey *rsa.PrivateKey, commonName string, notBefore, notAfter time.Time) ([]byte, error) {
-	template, err := newCATemplate(commonName, notBefore, notAfter, 0)
+	return createIntermediateCertificate(rootCert, rootKey, intermediateKey, govWifiOrganization, commonName, notBefore, notAfter)
+}
+
+func createIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.PrivateKey, intermediateKey *rsa.PrivateKey, organization, commonName string, notBefore, notAfter time.Time) ([]byte, error) {
+	template, err := newCATemplate(organization, commonName, notBefore, notAfter, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -157,8 +177,8 @@ func CreateIntermediateCertificate(rootCert *x509.Certificate, rootKey *rsa.Priv
 	return encodeCertificatePEM(certDER), nil
 }
 
-func newCATemplate(commonName string, notBefore, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
-	return newCATemplateWindow(commonName, notBefore, notAfter, maxPathLen)
+func newCATemplate(organization, commonName string, notBefore, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
+	return newCATemplateWindow(organization, commonName, notBefore, notAfter, maxPathLen)
 }
 
 func newCATemplateUntil(commonName string, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
@@ -166,7 +186,7 @@ func newCATemplateUntil(commonName string, notAfter time.Time, maxPathLen int) (
 		return nil, errors.New("expiry date is required")
 	}
 	notBefore, notAfter := validityWindow(notAfter)
-	return newCATemplateWindow(commonName, notBefore, notAfter, maxPathLen)
+	return newCATemplateWindow(govWifiOrganization, commonName, notBefore, notAfter, maxPathLen)
 }
 
 // validityWindow keeps NotBefore before NotAfter. A future expiry starts now.
@@ -181,17 +201,20 @@ func validityWindow(notAfter time.Time) (time.Time, time.Time) {
 	return notAfter.AddDate(-10, 0, 0), notAfter
 }
 
-func newCATemplateWindow(commonName string, notBefore, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
+func newCATemplateWindow(organization, commonName string, notBefore, notAfter time.Time, maxPathLen int) (*x509.Certificate, error) {
 	serialNumber, err := newSerialNumber()
 	if err != nil {
 		return nil, err
+	}
+	if organization == "" {
+		organization = govWifiOrganization
 	}
 
 	return &x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			Country:      []string{govWifiCountry},
-			Organization: []string{govWifiOrganization},
+			Organization: []string{organization},
 			CommonName:   commonName,
 		},
 		NotBefore:             notBefore,

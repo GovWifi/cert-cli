@@ -12,26 +12,50 @@ import (
 	"certcli/pki"
 )
 
-func TestGenChainCommandRegistered(t *testing.T) {
+func TestGenerateCommandRegistered(t *testing.T) {
 	found := false
-	for _, command := range genCmd.Commands() {
-		if command.Name() == "chain" {
+	for _, command := range rootCmd.Commands() {
+		if command.Name() == "generate" {
 			found = true
+			if !command.HasAlias("gen") {
+				t.Fatal("generate is missing gen alias")
+			}
 		}
 	}
 	if !found {
-		t.Fatal("gen chain is not registered")
+		t.Fatal("generate is not registered")
 	}
-	for _, name := range []string{"leaves", "save", "out"} {
-		if genChainCmd.Flags().Lookup(name) == nil {
+	for _, name := range []string{
+		"leaves",
+		"organization",
+		"root-cn",
+		"intermediate-cn",
+		"root-start",
+		"root-expiry",
+		"intermediate-start",
+		"intermediate-expiry",
+		"leaf-start",
+		"leaf-expiry",
+		"save",
+		"out",
+		"prefix",
+	} {
+		if generateCmd.Flags().Lookup(name) == nil {
 			t.Fatalf("missing --%s", name)
 		}
 	}
 }
 
-func TestRunGenChainRejectsLeafCount(t *testing.T) {
-	err := runGenChain(0, false, t.TempDir())
+func TestRunGenerateRejectsLeafCount(t *testing.T) {
+	err := runGenerate(generateOptions{Leaves: 0})
 	if err == nil || !strings.Contains(err.Error(), "at least 1") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRunGenerateRejectsPrefix(t *testing.T) {
+	err := runGenerate(generateOptions{Leaves: 1, Prefix: "bad/prefix"})
+	if err == nil || !strings.Contains(err.Error(), "path separators") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -58,23 +82,23 @@ func TestSaveChainWritesCertsAndKeys(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	if err := saveChain(chain, dir); err != nil {
+	if err := saveChain(chain, dir, "valid_"); err != nil {
 		t.Fatal(err)
 	}
 
 	want := []string{
-		"rootcert.pem",
-		"root-key.pem",
-		"root-key.pub",
-		"intermediate.pem",
-		"intermediate-key.pem",
-		"intermediate-key.pub",
-		"leaf-1.pem",
-		"leaf-1-key.pem",
-		"leaf-1-key.pub",
-		"leaf-2.pem",
-		"leaf-2-key.pem",
-		"leaf-2-key.pub",
+		"valid_rootcert.pem",
+		"valid_root.key",
+		"valid_root.pub",
+		"valid_intermediate.pem",
+		"valid_intermediate.key",
+		"valid_intermediate.pub",
+		"valid_leaf-1.pem",
+		"valid_leaf-1.key",
+		"valid_leaf-1.pub",
+		"valid_leaf-2.pem",
+		"valid_leaf-2.key",
+		"valid_leaf-2.pub",
 	}
 	for _, name := range want {
 		path := filepath.Join(dir, name)
@@ -87,14 +111,14 @@ func TestSaveChainWritesCertsAndKeys(t *testing.T) {
 		}
 	}
 
-	loaded, err := pki.LoadRSAPrivateKey(filepath.Join(dir, "leaf-2-key.pem"))
+	loaded, err := pki.LoadRSAPrivateKey(filepath.Join(dir, "valid_leaf-2.key"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if loaded.N.Cmp(key.N) != 0 {
 		t.Fatal("saved leaf private key does not match")
 	}
-	pub, err := os.ReadFile(filepath.Join(dir, "leaf-2-key.pub"))
+	pub, err := os.ReadFile(filepath.Join(dir, "valid_leaf-2.pub"))
 	if err != nil {
 		t.Fatal(err)
 	}

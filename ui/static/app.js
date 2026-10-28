@@ -2,13 +2,13 @@
   const defaults = {
     root: {
       cert: "rootcert.pem",
-      privateKey: "root-key.pem",
-      publicKey: "root-key.pub",
+      privateKey: "root.key",
+      publicKey: "root.pub",
     },
     inter: {
       cert: "intermediate.pem",
-      privateKey: "intermediate-key.pem",
-      publicKey: "intermediate-key.pub",
+      privateKey: "intermediate.key",
+      publicKey: "intermediate.pub",
     },
   };
 
@@ -18,17 +18,25 @@
     publicKey: { title: "Public key", kind: "pub" },
   };
 
-  for (const id of ["root-start", "inter-start"]) {
+  for (const id of [
+    "generate-root-start",
+    "generate-intermediate-start",
+    "generate-leaf-start",
+  ]) {
     const input = document.getElementById(id);
     if (input && !input.value) {
       input.value = defaultStartValue();
     }
   }
 
-  for (const id of ["root-expiry", "inter-expiry"]) {
+  for (const [id, years] of [
+    ["generate-root-expiry", 10],
+    ["generate-intermediate-expiry", 5],
+    ["generate-leaf-expiry", 1],
+  ]) {
     const input = document.getElementById(id);
     if (input && !input.value) {
-      input.value = defaultExpiryValue();
+      input.value = defaultExpiryInYears(years);
     }
   }
 
@@ -63,115 +71,50 @@
     });
   });
 
-  document.querySelector('[data-action="gen-all"]').addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const status = document.getElementById("status-all");
-    const results = document.getElementById("results-all");
-    setBusy(btn, true);
-    setStatus(status, "Generating RSA 4096 keys… this can take a few seconds.");
-    try {
-      const data = await postJSON("/api/gen/all");
-      renderBundle(document.querySelector('[data-bundle="all-root"]'), data.root, defaults.root);
-      renderBundle(document.querySelector('[data-bundle="all-inter"]'), data.intermediate, defaults.inter);
-      results.hidden = false;
-      setStatus(status, "Generated root and intermediate CA.", "ok");
-    } catch (err) {
-      setStatus(status, err.message, "err");
-    } finally {
-      setBusy(btn, false);
-    }
+  document.getElementById("generate-save").addEventListener("change", (e) => {
+    document.getElementById("generate-out-field").hidden = !e.target.checked;
   });
 
-  document.getElementById("chain-save").addEventListener("change", (e) => {
-    document.getElementById("chain-out-field").hidden = !e.target.checked;
-  });
-
-  document.querySelector('[data-action="gen-chain"]').addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const status = document.getElementById("status-chain");
-    const results = document.getElementById("results-chain");
-    const leaves = leafCountValue();
-    if (!Number.isInteger(leaves) || leaves < 1 || leaves > 100) {
-      results.hidden = true;
-      setStatus(status, "Leaf count must be a whole number from 1 to 100.", "err");
-      return;
-    }
-    const save = document.getElementById("chain-save").checked;
-    const outDir = document.getElementById("chain-out").value;
-    if (save) {
-      const pathError = invalidSaveDir(outDir);
-      if (pathError) {
-        results.hidden = true;
-        setStatus(status, pathError, "err");
-        return;
-      }
-    }
-
-    setBusy(btn, true);
-    setStatus(status, `Generating RSA 4096 keys for the root, intermediate, and ${leafPhrase(leaves)}… this can take a while.`);
-    try {
-      const data = await postJSON("/api/gen/chain", { leaves });
-      const prefix = save ? chainPrefix(outDir) : "";
-      renderChain(results, data, prefix);
-      results.hidden = false;
-      if (save) {
-        setStatus(status, "Saving certificates and keys…");
-        const written = await saveChainFiles(prefix, data);
-        const where = prefix ? prefix.replace(/\/$/, "") : "the current directory";
-        setStatus(status, `Generated root, intermediate, and ${leafPhrase(leaves)}. Saved ${written} files to ${where}.`, "ok");
-      } else {
-        setStatus(status, `Generated root, intermediate, and ${leafPhrase(leaves)}.`, "ok");
-      }
-    } catch (err) {
-      setStatus(status, err.message, "err");
-    } finally {
-      setBusy(btn, false);
-    }
-  });
-
-  document.querySelector('[data-action="gen-root"]').addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const status = document.getElementById("status-root");
-    const results = document.getElementById("results-root");
-    setBusy(btn, true);
-    setStatus(status, "Generating RSA 4096 keys… this can take a few seconds.");
-    try {
-      const start = startValue("root-start");
-      const expiry = expiryValue("root-expiry");
-      const data = await postJSON("/api/gen/root", { start, expiry });
-      renderBundle(document.querySelector('[data-bundle="root"]'), data, defaults.root);
-      results.hidden = false;
-      setStatus(status, `Generated root CA. ${expiryStatus(expiry)}`, "ok");
-    } catch (err) {
-      setStatus(status, err.message, "err");
-    } finally {
-      setBusy(btn, false);
-    }
-  });
-
-  document.querySelector('[data-action="gen-inter"]').addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const status = document.getElementById("status-inter");
-    const results = document.getElementById("results-inter");
-    setBusy(btn, true);
-    setStatus(status, "Generating RSA 4096 keys… this can take a few seconds.");
-    try {
-      const start = startValue("inter-start");
-      const expiry = expiryValue("inter-expiry");
-      const data = await postJSON("/api/gen/inter", {
-        rootCert: document.getElementById("inter-root-cert").value,
-        rootKey: document.getElementById("inter-root-key").value,
-        start,
-        expiry,
-      });
-      renderBundle(document.querySelector('[data-bundle="inter"]'), data, defaults.inter);
-      results.hidden = false;
-      setStatus(status, `Generated intermediate CA. ${expiryStatus(expiry)}`, "ok");
-    } catch (err) {
-      setStatus(status, err.message, "err");
-    } finally {
-      setBusy(btn, false);
-    }
+  document.querySelector('[data-action="gen-generate"]').addEventListener("click", async (e) => {
+    await generateChainPanel({
+      btn: e.currentTarget,
+      statusId: "status-generate",
+      resultsId: "results-generate",
+      leavesId: "generate-leaves",
+      saveId: "generate-save",
+      outId: "generate-out",
+      namePrefixId: "generate-prefix",
+      names: {
+        root: {
+          cert: "rootcert.pem",
+          privateKey: "root.key",
+          publicKey: "root.pub",
+        },
+        inter: {
+          cert: "intermediate.pem",
+          privateKey: "intermediate.key",
+          publicKey: "intermediate.pub",
+        },
+        leaf: (n) => ({
+          cert: `leaf-${n}.pem`,
+          privateKey: `leaf-${n}.key`,
+          publicKey: `leaf-${n}.pub`,
+        }),
+      },
+      endpoint: "/api/gen/test",
+      body: (leaves) => ({
+        leaves,
+        organization: document.getElementById("generate-organization").value,
+        rootCN: document.getElementById("generate-root-cn").value,
+        intermediateCN: document.getElementById("generate-intermediate-cn").value,
+        rootStart: startValue("generate-root-start"),
+        rootExpiry: expiryValue("generate-root-expiry"),
+        intermediateStart: startValue("generate-intermediate-start"),
+        intermediateExpiry: filledDate("generate-intermediate-expiry", () => defaultExpiryInYears(5)),
+        leafStart: startValue("generate-leaf-start"),
+        leafExpiry: filledDate("generate-leaf-expiry", () => defaultExpiryInYears(1)),
+      }),
+    });
   });
 
   document.querySelector('[data-action="validate"]').addEventListener("click", async (e) => {
@@ -196,8 +139,80 @@
     }
   });
 
-  function leafCountValue() {
-    const raw = document.getElementById("chain-leaves").value.trim();
+  document.querySelector('[data-action="view"]').addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const status = document.getElementById("status-view");
+    const results = document.getElementById("results-view");
+    setBusy(btn, true);
+    setStatus(status, "Decoding certificate…");
+    try {
+      const data = await postJSON("/api/view", {
+        cert: document.getElementById("view-cert").value,
+      });
+      document.getElementById("view-cert-text").value = data.certificate || "";
+      results.hidden = false;
+      setStatus(status, "Decoded certificate.", "ok");
+    } catch (err) {
+      results.hidden = true;
+      setStatus(status, err.message, "err");
+    } finally {
+      setBusy(btn, false);
+    }
+  });
+
+  async function generateChainPanel({ btn, statusId, resultsId, leavesId, saveId, outId, namePrefixId, names, endpoint, body }) {
+    const status = document.getElementById(statusId);
+    const results = document.getElementById(resultsId);
+    const leaves = leafCountValue(leavesId);
+    if (!Number.isInteger(leaves) || leaves < 1 || leaves > 100) {
+      results.hidden = true;
+      setStatus(status, "Leaf count must be a whole number from 1 to 100.", "err");
+      return;
+    }
+    const save = document.getElementById(saveId).checked;
+    const outDir = document.getElementById(outId).value;
+    const namePrefix = namePrefixId ? document.getElementById(namePrefixId).value : "";
+    if (save) {
+      const pathError = invalidSaveDir(outDir);
+      if (pathError) {
+        results.hidden = true;
+        setStatus(status, pathError, "err");
+        return;
+      }
+      const nameError = invalidNamePrefix(namePrefix);
+      if (nameError) {
+        results.hidden = true;
+        setStatus(status, nameError, "err");
+        return;
+      }
+    }
+
+    setBusy(btn, true);
+    setStatus(status, `Generating RSA 4096 keys for the root, intermediate, and ${leafPhrase(leaves)}… this can take a while.`);
+    try {
+      const data = await postJSON(endpoint, body(leaves));
+      const dirPrefix = save ? chainPrefix(outDir) : "";
+      const filePrefix = save ? namePrefix : "";
+      const prefix = dirPrefix + filePrefix;
+      renderChain(results, data, prefix, names);
+      results.hidden = false;
+      if (save) {
+        setStatus(status, "Saving certificates and keys…");
+        const written = await saveChainFiles(prefix, data, names);
+        const where = dirPrefix ? dirPrefix.replace(/\/$/, "") : "the current directory";
+        setStatus(status, `Generated root, intermediate, and ${leafPhrase(leaves)}. Saved ${written} files to ${where}.`, "ok");
+      } else {
+        setStatus(status, `Generated root, intermediate, and ${leafPhrase(leaves)}.`, "ok");
+      }
+    } catch (err) {
+      setStatus(status, err.message, "err");
+    } finally {
+      setBusy(btn, false);
+    }
+  }
+
+  function leafCountValue(id) {
+    const raw = document.getElementById(id).value.trim();
     if (!/^\d+$/.test(raw)) {
       return NaN;
     }
@@ -234,17 +249,30 @@
     return `${clean}/`;
   }
 
-  function renderChain(container, data, prefix) {
+  function invalidNamePrefix(prefix) {
+    if (!prefix) {
+      return "";
+    }
+    if (prefix.includes("/") || prefix.includes("\\") || prefix.includes("..")) {
+      return "prefix must not contain path separators";
+    }
+    return "";
+  }
+
+  function renderChain(container, data, prefix, names) {
+    const rootPaths = names?.root || defaults.root;
+    const interPaths = names?.inter || defaults.inter;
     container.replaceChildren();
-    container.appendChild(chainGroup("Root CA", data.root, prefixedPaths(prefix, defaults.root)));
-    container.appendChild(chainGroup("Intermediate CA", data.intermediate, prefixedPaths(prefix, defaults.inter)));
+    container.appendChild(chainGroup("Root CA", data.root, prefixedPaths(prefix, rootPaths)));
+    container.appendChild(chainGroup("Intermediate CA", data.intermediate, prefixedPaths(prefix, interPaths)));
     (data.leaves || []).forEach((leaf, index) => {
       const n = index + 1;
-      container.appendChild(chainGroup(leaf.commonName || `Leaf ${n}`, leaf, prefixedPaths(prefix, {
+      const leafPaths = names?.leaf?.(n) || {
         cert: `leaf-${n}.pem`,
-        privateKey: `leaf-${n}-key.pem`,
-        publicKey: `leaf-${n}-key.pub`,
-      })));
+        privateKey: `leaf-${n}.key`,
+        publicKey: `leaf-${n}.pub`,
+      };
+      container.appendChild(chainGroup(leaf.commonName || `Leaf ${n}`, leaf, prefixedPaths(prefix, leafPaths)));
     });
   }
 
@@ -268,20 +296,27 @@
     };
   }
 
-  async function saveChainFiles(prefix, data) {
+  async function saveChainFiles(prefix, data, names) {
+    const rootPaths = names?.root || defaults.root;
+    const interPaths = names?.inter || defaults.inter;
     const files = [
-      [prefix + defaults.root.cert, data.root.cert],
-      [prefix + defaults.root.privateKey, data.root.privateKey],
-      [prefix + defaults.root.publicKey, data.root.publicKey],
-      [prefix + defaults.inter.cert, data.intermediate.cert],
-      [prefix + defaults.inter.privateKey, data.intermediate.privateKey],
-      [prefix + defaults.inter.publicKey, data.intermediate.publicKey],
+      [prefix + rootPaths.cert, data.root.cert],
+      [prefix + rootPaths.privateKey, data.root.privateKey],
+      [prefix + rootPaths.publicKey, data.root.publicKey],
+      [prefix + interPaths.cert, data.intermediate.cert],
+      [prefix + interPaths.privateKey, data.intermediate.privateKey],
+      [prefix + interPaths.publicKey, data.intermediate.publicKey],
     ];
     (data.leaves || []).forEach((leaf, index) => {
       const n = index + 1;
-      files.push([prefix + `leaf-${n}.pem`, leaf.cert]);
-      files.push([prefix + `leaf-${n}-key.pem`, leaf.privateKey]);
-      files.push([prefix + `leaf-${n}-key.pub`, leaf.publicKey]);
+      const leafPaths = names?.leaf?.(n) || {
+        cert: `leaf-${n}.pem`,
+        privateKey: `leaf-${n}.key`,
+        publicKey: `leaf-${n}.pub`,
+      };
+      files.push([prefix + leafPaths.cert, leaf.cert]);
+      files.push([prefix + leafPaths.privateKey, leaf.privateKey]);
+      files.push([prefix + leafPaths.publicKey, leaf.publicKey]);
     });
     for (const [path, content] of files) {
       await postJSON("/api/save", { path, content });
@@ -295,8 +330,12 @@
   }
 
   function defaultExpiryValue() {
+    return defaultExpiryInYears(10);
+  }
+
+  function defaultExpiryInYears(years) {
     const date = new Date();
-    date.setFullYear(date.getFullYear() + 10);
+    date.setFullYear(date.getFullYear() + years);
     return formatISODate(date);
   }
 
@@ -321,13 +360,6 @@
       input.value = fallback();
     }
     return input.value;
-  }
-
-  function expiryStatus(value) {
-    if (value < formatISODate(new Date())) {
-      return `Expires ${value} (already expired).`;
-    }
-    return `Expires ${value}.`;
   }
 
   function renderBundle(container, bundle, paths) {

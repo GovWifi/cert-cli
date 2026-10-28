@@ -17,12 +17,18 @@ func LeafCommonName(index int) string {
 // CreateLeaf generates a new RSA key and an end-entity certificate named
 // commonName, signed by issuerCert with issuerKey, valid from notBefore until notAfter.
 func CreateLeaf(issuerCert *x509.Certificate, issuerKey *rsa.PrivateKey, commonName string, notBefore, notAfter time.Time) (*CADetails, error) {
+	return CreateLeafWithSubject(issuerCert, issuerKey, govWifiOrganization, commonName, notBefore, notAfter)
+}
+
+// CreateLeafWithSubject generates a new RSA key and an end-entity certificate
+// with the given organization and common name, signed by issuerCert.
+func CreateLeafWithSubject(issuerCert *x509.Certificate, issuerKey *rsa.PrivateKey, organization, commonName string, notBefore, notAfter time.Time) (*CADetails, error) {
 	privateKey, err := GenerateRSAPrivateKey()
 	if err != nil {
 		return nil, err
 	}
 
-	certPEM, err := CreateLeafCertificate(issuerCert, issuerKey, privateKey, commonName, notBefore, notAfter)
+	certPEM, err := createLeafCertificate(issuerCert, issuerKey, privateKey, organization, commonName, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +39,11 @@ func CreateLeaf(issuerCert *x509.Certificate, issuerKey *rsa.PrivateKey, commonN
 // CreateLeafCertificate returns a PEM-encoded end-entity certificate for
 // commonName, signed by issuerCert with issuerKey and valid from notBefore until notAfter.
 func CreateLeafCertificate(issuerCert *x509.Certificate, issuerKey *rsa.PrivateKey, leafKey *rsa.PrivateKey, commonName string, notBefore, notAfter time.Time) ([]byte, error) {
-	template, err := newLeafTemplate(commonName, notBefore, notAfter)
+	return createLeafCertificate(issuerCert, issuerKey, leafKey, govWifiOrganization, commonName, notBefore, notAfter)
+}
+
+func createLeafCertificate(issuerCert *x509.Certificate, issuerKey *rsa.PrivateKey, leafKey *rsa.PrivateKey, organization, commonName string, notBefore, notAfter time.Time) ([]byte, error) {
+	template, err := newLeafTemplate(organization, commonName, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -46,17 +56,20 @@ func CreateLeafCertificate(issuerCert *x509.Certificate, issuerKey *rsa.PrivateK
 	return encodeCertificatePEM(certDER), nil
 }
 
-func newLeafTemplate(commonName string, notBefore, notAfter time.Time) (*x509.Certificate, error) {
+func newLeafTemplate(organization, commonName string, notBefore, notAfter time.Time) (*x509.Certificate, error) {
 	serialNumber, err := newSerialNumber()
 	if err != nil {
 		return nil, err
+	}
+	if organization == "" {
+		organization = govWifiOrganization
 	}
 
 	return &x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			Country:      []string{govWifiCountry},
-			Organization: []string{govWifiOrganization},
+			Organization: []string{organization},
 			CommonName:   commonName,
 		},
 		NotBefore:             notBefore,

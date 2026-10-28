@@ -32,4 +32,5 @@ func init() {
 	if err := validateCmd.MarkFlagRequired("root"); err != nil {
 		panic(err)
 	}
+	rootCmd.AddCommand(validateCmd)
 }

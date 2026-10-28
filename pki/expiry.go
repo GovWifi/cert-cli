@@ -28,10 +28,31 @@ func ParseDate(value string, now time.Time) (time.Time, error) {
 	return time.Date(y, m, d, 23, 59, 59, 0, now.Location()), nil
 }
 
+// ResolveStartDate uses now when value is empty.
+func ResolveStartDate(value string, now time.Time) (time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		return now, nil
+	}
+	return ParseDate(value, now)
+}
+
 // ResolveExpiryDate uses DefaultExpiry when value is empty.
 func ResolveExpiryDate(value string, now time.Time) (time.Time, error) {
 	if strings.TrimSpace(value) == "" {
 		return DefaultExpiry(now), nil
+	}
+	return ParseDate(value, now)
+}
+
+// ResolveExpiryInYears returns the end of the local day years from now when
+// value is empty; otherwise it parses value as YYYY-MM-DD.
+func ResolveExpiryInYears(value string, now time.Time, years int) (time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		loc := now.Location()
+		y, m, d := now.In(loc).Date()
+		expiry := time.Date(y, m, d, 0, 0, 0, 0, loc).AddDate(years, 0, 0)
+		ey, em, ed := expiry.Date()
+		return time.Date(ey, em, ed, 23, 59, 59, 0, loc), nil
 	}
 	return ParseDate(value, now)
 }

@@ -84,6 +84,65 @@ func TestCreateChainRejectsLeafCount(t *testing.T) {
 	}
 }
 
+func TestCreateCustomChainUsesSubjectAndValidity(t *testing.T) {
+	rootStart := testNotBefore
+	rootExpiry := testNotBefore.AddDate(10, 0, 0)
+	interStart := testNotBefore.AddDate(0, 1, 0)
+	interExpiry := testNotBefore.AddDate(5, 0, 0)
+	leafStart := testNotBefore.AddDate(0, 2, 0)
+	leafExpiry := testNotBefore.AddDate(1, 0, 0)
+
+	chain, err := CreateCustomChain(ChainOptions{
+		Organization:   "Test Org",
+		RootCN:         "Test Root",
+		IntermediateCN: "Test Intermediate",
+		LeafCount:      1,
+		RootNotBefore:  rootStart,
+		RootNotAfter:   rootExpiry,
+		InterNotBefore: interStart,
+		InterNotAfter:  interExpiry,
+		LeafNotBefore:  leafStart,
+		LeafNotAfter:   leafExpiry,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if chain.Root.Cert.Subject.CommonName != "Test Root" {
+		t.Fatalf("root CN = %q", chain.Root.Cert.Subject.CommonName)
+	}
+	if len(chain.Root.Cert.Subject.Organization) != 1 || chain.Root.Cert.Subject.Organization[0] != "Test Org" {
+		t.Fatalf("root organization = %v", chain.Root.Cert.Subject.Organization)
+	}
+	if !chain.Root.Cert.NotBefore.Equal(rootStart) || !chain.Root.Cert.NotAfter.Equal(rootExpiry) {
+		t.Fatalf("root validity %s – %s", chain.Root.Cert.NotBefore, chain.Root.Cert.NotAfter)
+	}
+
+	if chain.Intermediate.Cert.Subject.CommonName != "Test Intermediate" {
+		t.Fatalf("intermediate CN = %q", chain.Intermediate.Cert.Subject.CommonName)
+	}
+	if !chain.Intermediate.Cert.NotBefore.Equal(interStart) || !chain.Intermediate.Cert.NotAfter.Equal(interExpiry) {
+		t.Fatalf("intermediate validity %s – %s", chain.Intermediate.Cert.NotBefore, chain.Intermediate.Cert.NotAfter)
+	}
+	if err := CheckSignedBy(chain.Intermediate.Cert, chain.Root.Cert); err != nil {
+		t.Fatal(err)
+	}
+
+	leaf := chain.Leaves[0].Cert
+	if leaf.Subject.CommonName != LeafCommonName(1) {
+		t.Fatalf("leaf CN = %q", leaf.Subject.CommonName)
+	}
+	if len(leaf.Subject.Organization) != 1 || leaf.Subject.Organization[0] != "Test Org" {
+		t.Fatalf("leaf organization = %v", leaf.Subject.Organization)
+	}
+	if !leaf.NotBefore.Equal(leafStart) || !leaf.NotAfter.Equal(leafExpiry) {
+		t.Fatalf("leaf validity %s – %s", leaf.NotBefore, leaf.NotAfter)
+	}
+	if err := CheckSignedBy(leaf, chain.Intermediate.Cert); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func assertLeafCert(t *testing.T, cert *x509.Certificate, cn string) {
 	t.Helper()
 	if cert.Subject.CommonName != cn {

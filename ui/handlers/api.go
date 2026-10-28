@@ -35,6 +35,19 @@ type genChainResponse struct {
 	Leaves       []pemBundle `json:"leaves"`
 }
 
+type genTestRequest struct {
+	Leaves               int    `json:"leaves"`
+	Organization         string `json:"organization"`
+	RootCN               string `json:"rootCN"`
+	IntermediateCN       string `json:"intermediateCN"`
+	RootStart            string `json:"rootStart"`
+	RootExpiry           string `json:"rootExpiry"`
+	IntermediateStart    string `json:"intermediateStart"`
+	IntermediateExpiry   string `json:"intermediateExpiry"`
+	LeafStart            string `json:"leafStart"`
+	LeafExpiry           string `json:"leafExpiry"`
+}
+
 type genExpiryRequest struct {
 	Start  string `json:"start"`
 	Expiry string `json:"expiry"`
@@ -47,6 +60,13 @@ type genInterRequest struct {
 	Expiry   string `json:"expiry"`
 }
 
+type genLeafRequest struct {
+	IntermediateCert string `json:"intermediateCert"`
+	IntermediateKey  string `json:"intermediateKey"`
+	Start            string `json:"start"`
+	Expiry           string `json:"expiry"`
+}
+
 type validateRequest struct {
 	Cert string `json:"cert"`
 	Root string `json:"root"`
@@ -57,6 +77,14 @@ type validateResponse struct {
 	Message     string `json:"message"`
 	Certificate string `json:"certificate"`
 	Issuer      string `json:"issuer"`
+}
+
+type viewRequest struct {
+	Cert string `json:"cert"`
+}
+
+type viewResponse struct {
+	Certificate string `json:"certificate"`
 }
 
 type saveRequest struct {
@@ -136,16 +164,86 @@ func handleGenChain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeJSON(w, http.StatusOK, chainResponse(chain))
+}
+
+func handleGenTest(w http.ResponseWriter, r *http.Request) {
+	var req genTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Leaves < 1 {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("leaves must be at least 1"))
+		return
+	}
+	if req.Leaves > pki.MaxLeafCount {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("leaves must be at most %d", pki.MaxLeafCount))
+		return
+	}
+
+	now := time.Now()
+	rootStart, err := pki.ResolveStartDate(req.RootStart, now)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("root start: %w", err))
+		return
+	}
+	rootExpiry, err := pki.ResolveExpiryDate(req.RootExpiry, now)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("root expiry: %w", err))
+		return
+	}
+	interStart, err := pki.ResolveStartDate(req.IntermediateStart, now)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("intermediate start: %w", err))
+		return
+	}
+	interExpiry, err := pki.ResolveExpiryInYears(req.IntermediateExpiry, now, 5)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("intermediate expiry: %w", err))
+		return
+	}
+	leafStart, err := pki.ResolveStartDate(req.LeafStart, now)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("leaf start: %w", err))
+		return
+	}
+	leafExpiry, err := pki.ResolveExpiryInYears(req.LeafExpiry, now, 1)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("leaf expiry: %w", err))
+		return
+	}
+
+	chain, err := pki.CreateCustomChain(pki.ChainOptions{
+		Organization:   req.Organization,
+		RootCN:         req.RootCN,
+		IntermediateCN: req.IntermediateCN,
+		LeafCount:      req.Leaves,
+		RootNotBefore:  rootStart,
+		RootNotAfter:   rootExpiry,
+		InterNotBefore: interStart,
+		InterNotAfter:  interExpiry,
+		LeafNotBefore:  leafStart,
+		LeafNotAfter:   leafExpiry,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, chainResponse(chain))
+}
+
+func chainResponse(chain *pki.Chain) genChainResponse {
 	leaves := make([]pemBundle, 0, len(chain.Leaves))
 	for _, leaf := range chain.Leaves {
 		leaves = append(leaves, bundleFromNamed(leaf))
 	}
-
-	writeJSON(w, http.StatusOK, genChainResponse{
+	return genChainResponse{
 		Root:         bundleFrom(chain.Root),
 		Intermediate: bundleFrom(chain.Intermediate),
 		Leaves:       leaves,
-	})
+	}
 }
 
 func handleGenInter(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +279,46 @@ func handleGenInter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	material, err := pki.CreateIntermediateCA(rootCert, rootKey, notBefore, notAfter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, bundleFrom(material))
+}
+
+func handleGenLeaf(w http.ResponseWriter, r *http.Request) {
+	var req genLeafRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(req.IntermediateCert) == "" || strings.TrimSpace(req.IntermediateKey) == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("intermediateCert and intermediateKey are required"))
+		return
+	}
+
+	interCert, err := pki.PemToCertificate([]byte(req.IntermediateCert))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid intermediate certificate: %w", err))
+		return
+	}
+	interKey, err := pki.PemToRSAPrivateKey([]byte(req.IntermediateKey))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid intermediate private key: %w", err))
+		return
+	}
+	notBefore, err := pki.ParseDate(req.Start, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	notAfter, err := pki.ResolveExpiryInYears(req.Expiry, time.Now(), 1)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	material, err := pki.CreateLeaf(interCert, interKey, pki.LeafCommonName(1), notBefore, notAfter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -225,6 +363,28 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
 	resp.OK = true
 	resp.Message = "certificate is signed by the given root"
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func handleView(w http.ResponseWriter, r *http.Request) {
+	var req viewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(req.Cert) == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("cert is required"))
+		return
+	}
+
+	cert, err := pki.PemToCertificate([]byte(req.Cert))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid certificate: %w", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, viewResponse{
+		Certificate: pki.CertificateText(cert),
+	})
 }
 
 func handleSave(w http.ResponseWriter, r *http.Request) {

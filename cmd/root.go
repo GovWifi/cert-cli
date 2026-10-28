@@ -9,7 +9,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:           "cert-cli",
-	Short:         "Generate and validate GovWifi CA certificates",
+	Short:         "Generate, validate, and view GovWifi CA certificates",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
@@ -20,9 +20,4 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func init() {
-	rootCmd.AddCommand(genCmd)
-	rootCmd.AddCommand(validateCmd)
 }
